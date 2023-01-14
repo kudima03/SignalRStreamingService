@@ -5,10 +5,16 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SignalRStreamingServiceClient"
         mc:Ignorable="d"
-        Title="MainWindow" Height="800" Width="1000">
+        Closing="Window_Closing"
+        Title="MainWindow" Height="800" Width="1200" ResizeMode="NoResize">
     <Grid>
         <Canvas HorizontalAlignment="Left" Height="139" Margin="-275,-163,0,0" VerticalAlignment="Top" Width="55"/>
-        <Image x:Name="ImageBox" HorizontalAlignment="Left" Height="600" Margin="55,69,0,0" VerticalAlignment="Top" Width="800"/>
-        <Button Content="Stream" HorizontalAlignment="Left" Margin="892,412,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="Button_Click"/>
+        <Image x:Name="ImageBox" HorizontalAlignment="Left" Height="608" Margin="55,69,0,0" VerticalAlignment="Top" Width="800"/>
+        <Button x:Name="StreamButton" Content="Stream" HorizontalAlignment="Left" Margin="892,412,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="StreamButton_Click"/>
+        <Button x:Name="StopStreamButton" Content="Stop" HorizontalAlignment="Left" Margin="892,477,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="StopStreamButton_Click"/>
+        <Button x:Name="ConnectButton" Content="Connect" HorizontalAlignment="Left" Margin="892,342,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="ConnectButton_Click"/>
+        <Button x:Name="ScreenCapture" Content="Screen capture" HorizontalAlignment="Left" Margin="892,540,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="ScreenCapture_Click"/>
+        <Button x:Name="StopScreenCapture" Content="Stop screen&#xD;&#xA; capture" HorizontalAlignment="Left" Margin="892,603,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="StopScreenCapture_Click"/>
+        <Button x:Name="SwitchView" Content="On/Off view" HorizontalAlignment="Left" Margin="892,666,0,0" VerticalAlignment="Top" Height="50" Width="98" Click="SwitchView_Click"/>
     </Grid>
 </Window>

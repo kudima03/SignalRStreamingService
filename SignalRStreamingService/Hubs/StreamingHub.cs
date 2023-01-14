@@ -15,7 +15,7 @@ namespace SignalRStreamingService.Hubs
             _webEnv = webEnv;
         }
 
-        public async Task Stream(ChannelReader<string> videoData)
+        public async Task Stream(ChannelReader<byte[]> videoData)
         {
             while (await videoData.WaitToReadAsync())
             {

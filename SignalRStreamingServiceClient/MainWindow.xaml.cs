@@ -2,9 +2,13 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using System;
 using System.ComponentModel;
+using System.Configuration;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,28 +20,50 @@ namespace SignalRStreamingServiceClient
     /// </summary>
     public partial class MainWindow : Window
     {
-        HubConnection connection;
+        private HubConnection _connection;
 
-        private event EventHandler<NewFrameArgs> NewFrame;
+        private Channel<byte[]> _channel;
 
-        private Channel<byte[]> channel;
+        private VideoCaptureDevice _videoCaptureDevice;
 
-        BitmapSource src;
+        private CancellationTokenSource _screenCaptureCancellationSource = new CancellationTokenSource();
 
-        bool a = true;
+        private MemoryStream _stream = new MemoryStream();
+
+        private bool _receiveEnabled = true;
+
+        private void InitializeVideoCaptureDevice()
+        {
+            var videoDevices = new FilterInfoCollection(FilterCategory.VideoInputDevice) ?? throw new Exception("No video devices found");
+            _videoCaptureDevice = new VideoCaptureDevice(videoDevices[0].MonikerString);
+        }
+
+        private void InitializeConnection()
+        {
+            var hubUrl = ConfigurationManager.AppSettings.Get("HubUrl") ?? throw new Exception("Url cannot be nulll");
+            _connection = new HubConnectionBuilder().WithUrl(hubUrl).Build();
+            _connection.On<byte[]>("video-data", NewFrameReceived);
+        }
+
+        private void InitializeChannel()
+        {
+            _channel = Channel.CreateUnbounded<byte[]>();
+        }
 
         public MainWindow()
         {
             InitializeComponent();
-            connection = new HubConnectionBuilder().WithUrl("http://localhost:5000/stream").Build();
-            NewFrame += MainWindow_NewFrame;
-            ImageBox.Source = src;
-            connection.On<byte[]>("video-data", (item) =>
+            InitializeVideoCaptureDevice();
+            InitializeChannel();
+            InitializeConnection();
+        }
+
+        private void NewFrameReceived(byte[] frame)
+        {
+            Dispatcher.Invoke(new Action(async () =>
             {
-                NewFrame(this, new NewFrameArgs(item));
-            });
-            connection.StartAsync().Wait();
-            channel = Channel.CreateUnbounded<byte[]>();
+                ImageBox.Source = ToBitmapSource(await ToBitmap(frame));
+            }));
         }
 
         public BitmapSource ToBitmapSource(Bitmap bmp)
@@ -51,37 +77,80 @@ namespace SignalRStreamingServiceClient
             return bms;
         }
 
-        public Bitmap ToBitmap(byte[] arr)
+        public async Task<Bitmap> ToBitmap(byte[] arr)
         {
-            using (var ms = new MemoryStream(arr))
-            {
-                return new Bitmap(ms);
-            }
-        }
-
-        private void MainWindow_NewFrame(object? sender, NewFrameArgs e)
-        {
-            var a = ToBitmap(e.Frame);
-            a.Save("test.jpeg");
-            //ImageBox.Source = ToBitmapSource();
-        }
-
-
-        private async void Button_Click(object sender, RoutedEventArgs e)
-        {
-            FilterInfoCollection devices = new FilterInfoCollection(FilterCategory.VideoInputDevice);
-            var videoCaptureDevice = new VideoCaptureDevice(devices[0].MonikerString);
-            videoCaptureDevice.NewFrame += VideoCaptureDevice_NewFrame;
-            await connection.SendAsync("Stream", channel.Reader);
-            videoCaptureDevice.Start();
-           
+            await _stream.WriteAsync(arr, 0, arr.Length);
+            var bmp = new Bitmap(_stream);
+            _stream.Position = 0;
+            _stream.SetLength(0);
+            return bmp;
         }
 
         private async void VideoCaptureDevice_NewFrame(object sender, AForge.Video.NewFrameEventArgs eventArgs)
         {
-            var a = new Bitmap(eventArgs.Frame, 50, 50);
-            byte[]? bytes = TypeDescriptor.GetConverter(a).ConvertTo(a, typeof(byte[])) as byte[];
-            await channel.Writer.WriteAsync(bytes);
+            byte[]? bytes = TypeDescriptor.GetConverter(eventArgs.Frame).ConvertTo(eventArgs.Frame, typeof(byte[])) as byte[];
+            await _channel.Writer.WriteAsync(bytes);
+        }
+
+        private async void ConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            await _connection.StartAsync();
+        }
+
+        private async void StreamButton_Click(object sender, RoutedEventArgs e)
+        {
+            _videoCaptureDevice.NewFrame += VideoCaptureDevice_NewFrame;
+            await _connection.SendAsync("Stream", _channel.Reader);
+            _videoCaptureDevice.Start();
+        }
+
+        private void StopStreamButton_Click(object sender, RoutedEventArgs e)
+        {
+            _videoCaptureDevice.SignalToStop();
+        }
+
+        private async void ScreenCapture_Click(object sender, RoutedEventArgs e)
+        {
+            await _connection.SendAsync("Stream", _channel.Reader);
+            await Task.Run(async () =>
+            {
+                var bmp = new Bitmap(1920, 1080);
+                var gr = Graphics.FromImage(bmp);
+                while (!_screenCaptureCancellationSource.IsCancellationRequested)
+                {
+                    await Task.Delay(35);
+                    gr.CopyFromScreen(0, 0, 0, 0, new System.Drawing.Size(1920, 1080));
+                    await _channel.Writer.WriteAsync(TypeDescriptor.GetConverter(bmp).ConvertTo(bmp, typeof(byte[])) as byte[]);
+                }
+            }, _screenCaptureCancellationSource.Token);
+        }
+
+        private async void StopScreenCapture_Click(object sender, RoutedEventArgs e)
+        {
+            _screenCaptureCancellationSource.Cancel();
+            await Task.Delay(70);
+            _screenCaptureCancellationSource = new CancellationTokenSource();
+        }
+
+        private void SwitchView_Click(object sender, RoutedEventArgs e)
+        {
+            if (_receiveEnabled)
+            {
+                _connection.Remove("video-data");
+                _receiveEnabled = false;
+            }
+            else
+            {
+                _connection.On<byte[]>("video-data", NewFrameReceived);
+                _receiveEnabled = true;
+            }
+        }
+
+        private async void Window_Closing(object sender, CancelEventArgs e)
+        {
+            _videoCaptureDevice.SignalToStop();
+            _channel.Writer.Complete();
+            await _connection.DisposeAsync();
         }
     }
 }
